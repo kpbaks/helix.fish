@@ -74,7 +74,10 @@ function hx.status
 
         printf '%scpu%s:          todo\n' $b $reset
 
-        printf '%sram%s:          todo\n' $b $reset
+        begin
+            set -l vmrss (string match --regex --groups-only 'VmRSS:\s*(.+)' </proc/$pid/status)
+            printf '%sram%s:          %s%s%s\n' $b $reset $red $vmrss $reset
+        end
 
         # IDEA: this is to see which lsps it is running
         printf '%ssubprocesses%s: todo\n' $b $reset
