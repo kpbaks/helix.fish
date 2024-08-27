@@ -18,7 +18,7 @@ function hx.status
     set -l b (set_color --bold)
     set -l i (set_color --italics)
     set -l dim (set_color --dim)
-    set -l pid_color (set_color --background yellow '#000000')
+    set -l pid_color (set_color --background yellow '#000000' --bold)
 
     if test (count $hx_pids) -eq 0
         printf 'No %shx%s processes are running\n' (set_color $fish_color_command) $reset
@@ -51,8 +51,14 @@ function hx.status
 
     set -l uptime (string split ' ' --fields=1 </proc/uptime)
 
+    if test (count $hx_pids) -ge 2
+        set_color --dim
+        string repeat --count $COLUMNS -
+        set_color normal
+    end
+
     for pid in $hx_pids
-        printf '- %s%d%s\n' $pid_color $pid $reset
+        printf '- %s %d %s\n' $pid_color $pid $reset
         printf '  - %sexe%s:          %s%s%s\n' $b $reset (set_color $fish_color_command) (path resolve /proc/$pid/exe) $reset
         printf '  - %scwd%s:          %s%s%s\n' $b $reset (set_color $fish_color_cwd) (path resolve /proc/$pid/cwd) $reset
         printf '  - %scmdline%s:      %s%s\n' $b $reset (printf (echo (string split0 </proc/$pid/cmdline) | fish_indent --ansi)) $reset
@@ -142,8 +148,27 @@ function hx.status
         printf '  - %sthreads%s:      todo\n' $b $reset
         # TODO: color the state accordingly, i.e. green or red or ..
         # cat /proc/[PID]/status | grep State
-        printf '  - %sstate%s:        todo\n' $b $reset
+        begin
+            set -l state (string match --regex --groups-only '^State:[^\(]+\((\w+)\)' </proc/$pid/status)
+            set -l color
+            switch $state
+                case stopped
+                    set color $red
+                case sleeping
+                    set color $dim
+                case '*'
+                    set color $green
+            end
+            printf '  - %sstate%s:        %s%s%s\n' $b $reset $color $state $reset
 
+        end
         # TODO: Look at open fds to get an idea of which files are open
+
+        # echo
+        if test (count $hx_pids) -ge 2
+            set_color --dim
+            string repeat --count $COLUMNS -
+            set_color normal
+        end
     end
 end
