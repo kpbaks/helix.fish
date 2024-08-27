@@ -26,6 +26,7 @@ function hx.status
     set -l i (set_color --italics)
     set -l dim (set_color --dim)
     set -l pid_color (set_color --background yellow '#000000' --bold)
+    set -l cpid_color (set_color yellow --bold --dim)
 
     if test (count $hx_pids) -eq 0
         printf 'No %shx%s processes are running\n' (set_color $fish_color_command) $reset
@@ -43,18 +44,8 @@ function hx.status
         command curl -s $releases_url | string match --regex --groups-only '"tag_name": "(.+)"' >$latest_hx_version
     end
     set -l hx_latest_version_parts (string split '.' <$cache_dir/latest_hx_version)
-    # echo $latest_hx_version_parts
-    # return
 
     set -l CLK_TCK (getconf CLK_TCK)
-    # START_TIME=$(awk '{print $22}' /proc/[PID]/stat)
-    # UPTIME=$(awk '{print $1}' /proc/uptime)
-
-    # # Convert start time to seconds
-    # START_TIME_SECS=$(echo "$START_TIME / $CLK_TCK" | bc -l)
-
-    # # Calculate elapsed time
-    # ELAPSED_TIME=$(echo "$UPTIME - $START_TIME_SECS" | bc -l)
 
     set -l uptime (string split ' ' --fields=1 </proc/uptime)
 
@@ -80,7 +71,34 @@ function hx.status
         end
 
         # IDEA: this is to see which lsps it is running
-        printf '%ssubprocesses%s: todo\n' $b $reset
+        begin
+            command cat /proc/$pid/task/*/children | string split0 | read --list cpids
+            printf '%ssubprocesses%s: ' $b $reset
+            set -l ncpids (count $cpids)
+
+            if test (count $cpids) -eq 0
+                printf '%s0%s\n' $dim $reset
+            else
+                printf '%s%d%s\n' $blue (count $cpids) $reset
+                # echo "cpids: $children_pids"
+                # TODO: measure ram usage
+                # TODO: measure etime
+                for i in (seq $ncpids)
+                    set -l cpid $cpids[$i]
+
+                    test $i -gt 1; and printf '%s│%s\n' $dim $reset
+                    printf '%s│ ┌ %spid%s:     %s%d%s\n' $dim $b $reset $cpid_color $cpid $reset
+                    if test $i -lt $ncpids
+                        printf '%s├─┼ %scwd%s:     %s%s%s\n' $dim $b $reset (set_color $fish_color_cwd --dim) (path resolve /proc/$cpid/cwd) $reset
+                        printf '%s│ └ %scmdline%s: %s%s%s\n' $dim $b $reset $dim (printf (echo (string split0 </proc/$cpid/cmdline) | fish_indent --ansi)) $reset
+                    else
+                        printf '%s└─┼ %scwd%s:     %s%s%s\n' $dim $b $reset (set_color $fish_color_cwd --dim) (path resolve /proc/$cpid/cwd) $reset
+                        printf '%s  └ %scmdline%s: %s%s%s\n' $dim $b $reset $dim (printf (echo (string split0 </proc/$cpid/cmdline) | fish_indent --ansi)) $reset
+                    end
+                end
+                echo
+            end
+        end
 
         # helix version
         begin
