@@ -1,4 +1,5 @@
 function hx
+    # IDEA: ignore files mathing certain patterns, and files from .gitignore
 
     set -l hx hx
     # if test -f ~/clones/helix/target/release/hx

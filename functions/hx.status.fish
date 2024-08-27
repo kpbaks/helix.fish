@@ -45,7 +45,42 @@ function hx.status
         # TODO: fetch version of latest release from github, and cache it on disk. If not the newest the notify user
         printf '  - %sversion%s:      %s\n' $b $reset (/proc/$pid/exe --version | string split ' ' --fields=2)
         # IDEA: walk the process tree, using the pids ppid until we hit pid=0, on the way look for known terminals like `kitty` or `alacritty`
-        printf '  - %sterminal%s:     todo\n' $b $reset
+        # set -l terminal
+        begin
+            set -l ppid $pid
+            while true
+                set ppid (string match --regex --groups-only '^PPid:\s+(\d+)' </proc/$ppid/status)
+                # echo $ppid
+                # set -l exe (path resolve /proc/$pid/exe)
+                set -l exe (string split0 </proc/$ppid/cmdline)[1]
+                set -l name (path basename $exe)
+                # echo "exe: $exe"
+                # echo "name: $name"
+                switch $name
+                    case kitty alacritty konsole
+                        set -f terminal (path resolve /proc/$ppid/exe)
+                        break
+                    case '*'
+                end
+
+                test $ppid -gt 1; or break # Can not be process 0 or 1
+            end
+
+            printf '  - %sterminal%s:     ' $b $reset
+            if set -q terminal
+                printf '%s%s%s\n' (set_color $fish_color_command) $terminal $reset
+            else
+                printf '%s UNKNOWN %s\n' (set_color --background brred '#000000') $reset
+            end
+        end
+        # set -l ppids $pid
+        # while test $ppids[1] != 0
+        #     set -l pid $ppids[1]
+        #     set --prepend ppids $ppid
+        #     # printf 'ppid: %s exe: %s\n' $ppid (path resolve /proc/$ppid/exe)
+        # end
+
+
         # IDEA: it must be possible to list which fds the process has open or which files it has mmapped into its virtual memory
         printf '  - %sconfig.toml%s:  todo\n' $b $reset
         printf '  - %setime%s:        todo\n' $b $reset
