@@ -2,7 +2,18 @@ function hx.pids
     set -l options j/jobs
     argparse $options -- $argv; or return 2
 
-    set -l hx_pids (command pgrep hx)
+    if command -q pgrep
+        set -f hx_pids (command pgrep hx)
+    else
+        # Walk /proc/ filesystem and search for all hx binaries
+        set -f hx_pids
+
+        for pid in /proc/*
+            test -r $pid/exe
+            and test (path resolve $pid/exe | path basename) = hx
+            and set -a hx_pids (path basename $pid)
+        end
+    end
 
     if set -q _flag_jobs; and status is-interactive
         # Filter out those pids, which are not running in the background of the current fish interactive shell
