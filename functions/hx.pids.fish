@@ -27,5 +27,8 @@ function hx.pids
         end
     end
 
-    printf '%s\n' $hx_pids
+    for pid in $hx_pids
+        echo $pid
+    end
+    # printf '%s\n' $hx_pids
 end

@@ -63,7 +63,7 @@ function hx.status
         printf '%scwd%s:          %s%s%s\n' $b $reset (set_color $fish_color_cwd) (path resolve /proc/$pid/cwd) $reset
         printf '%scmdline%s:      %s%s\n' $b $reset (printf (echo (string split0 </proc/$pid/cmdline) | fish_indent --ansi)) $reset
 
-        printf '%scpu%s:          todo\n' $b $reset
+        # printf '%scpu%s:          todo\n' $b $reset
 
         begin
             set -l vmrss (string match --regex --groups-only 'VmRSS:\s*(.+)' </proc/$pid/status)
@@ -83,6 +83,7 @@ function hx.status
                 # echo "cpids: $children_pids"
                 # TODO: measure ram usage
                 # TODO: measure etime
+                # TODO: print process state
                 for i in (seq $ncpids)
                     set -l cpid $cpids[$i]
 
@@ -192,12 +193,18 @@ function hx.status
             echo
         end
 
+        # TODO: find the .log file the editor writes to and print it
+
         begin
             # TODO: I do not know if the final filter is reliable, maybe check if $HELIX_RUNTIME is defined and use that
             set -l loaded_grammars (cat /proc/$pid/maps | string match --regex --groups-only '\s+(/\S+)' | uniq | string match '*grammars*')
             printf '%sloaded ts grammars%s:\n' $b $reset
             for f in $loaded_grammars
-                printf ' - %s%s%s/%s%s%s\n' $dim (path dirname $f) $reset $cyan (path basename $f) $reset
+                printf ' - %s%s%s/%s%s%s' $dim (path dirname $f) $reset $cyan (path basename $f) $reset
+                if test -L $f
+                    printf ' -> %s%s%s' $reset (path resolve $f) $reset
+                end
+                echo
             end
             # printf ' - %s\n' $mmapped_files
         end
@@ -212,24 +219,42 @@ function hx.status
         # end
 
 
-        # IDEA: look at some env vars that might be related to helix
-        # (string split0 </proc/$pid/environ)
-        # Found by searching for `std::env::var` in github.com/helix-editor/helix codebase tir 27 aug 00:10:22 CEST 2024
-        # - HELIX_RUNTIME
-        # - HELIX_LOG_LEVEL # https://github.com/helix-editor/helix/blob/af7a1fd20c0a2915e0dae1b5bea7cb6bde6c2746/helix-term/src/application.rs#L81
-        # - COLORTERM # https://github.com/helix-editor/helix/blob/af7a1fd20c0a2915e0dae1b5bea7cb6bde6c2746/helix-term/src/lib.rs#L31
-        # Since `hx` is a rust program maybe also look for relavant rust env vars like `RUST_BACKTRACE`
-        printf '%senv%s:          todo\n' $b $reset
+        begin
+            # IDEA: look at some env vars that might be related to helix
+            # (string split0 </proc/$pid/environ)
+            # Found by searching for `std::env::var` in github.com/helix-editor/helix codebase tir 27 aug 00:10:22 CEST 2024
+            # - HELIX_RUNTIME
+            # - HELIX_LOG_LEVEL # https://github.com/helix-editor/helix/blob/af7a1fd20c0a2915e0dae1b5bea7cb6bde6c2746/helix-term/src/application.rs#L81
+            # - COLORTERM # https://github.com/helix-editor/helix/blob/af7a1fd20c0a2915e0dae1b5bea7cb6bde6c2746/helix-term/src/lib.rs#L31
+            # Since `hx` is a rust program maybe also look for relavant rust env vars like `RUST_BACKTRACE`
+            printf '%senv%s:\n' $b $reset
+            set -l relevant_env_vars HELIX_RUNTIME HELIX_LOG_LEVEL COLORTERM RUST_BACKTRACE
+            set -l len_longest_relevant_env_var 13 # HELIX_RUNTIME 
+            string split0 </proc/$pid/environ | while read --delimiter = var value
+                if contains --index -- $var $relevant_env_vars | read index
+                    set --erase relevant_env_vars[$index]
+                    set -l rpad (math "$len_longest_relevant_env_var - $(string length -- $var) + 2")
+                    set rpad (string repeat --count $rpad ' ')
+                    printf ' - %s%s%s%s=%s\n' (set_color blue) $var $reset $rpad $value
+                end
+            end
+
+            for var in $relevant_env_vars
+                set -l rpad (math "$len_longest_relevant_env_var - $(string length -- $var) + 2")
+                set rpad (string repeat --count $rpad ' ')
+                printf ' - %s%s%s%s=\n' (set_color --dim) $var $reset $rpad
+            end
+        end
 
         # cat /proc/[PID]/cgroup
-        printf '%scgroup%s:       todo\n' $b $reset
+        # printf '%scgroup%s:       todo\n' $b $reset
         # cat /proc/[PID]/io
-        begin
-            # string match --regex --groups-only '(\d+)' </proc/$pid/io | read --line rchar wchar syscr syscw read_bytes write_bytes cancelled_write_bytes
-            string split ': ' --fields=2 </proc/$pid/io | read --line rchar wchar syscr syscw read_bytes write_bytes cancelled_write_bytes
+        # begin
+        #     # string match --regex --groups-only '(\d+)' </proc/$pid/io | read --line rchar wchar syscr syscw read_bytes write_bytes cancelled_write_bytes
+        #     string split ': ' --fields=2 </proc/$pid/io | read --line rchar wchar syscr syscw read_bytes write_bytes cancelled_write_bytes
 
-            printf '%sio%s:           todo\n' $b $reset
-        end
+        #     printf '%sio%s:           todo\n' $b $reset
+        # end
         # ls /proc/[PID]/task
         printf '%sthreads%s:      todo\n' $b $reset
         begin

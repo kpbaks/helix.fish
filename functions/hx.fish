@@ -1,6 +1,12 @@
 function hx
     # IDEA: ignore files mathing certain patterns, and files from .gitignore
 
+    # IDEA: look at the output of `hx.status  -p cmdline` and compare it with $argv
+    # If we are trying to open a file already opened by a `hx <file>...` call
+    # Notify the user about that. They probably do not want to open editor instances of the same file.
+    # Go furhter, and if the file is already edited by a hx process, and that hx process is in this
+    # fish shells `jobs` list then `fg` the hx process.
+
     set -l hx hx
     # if test -f ~/clones/helix/target/release/hx
     #     set hx ~/clones/helix/target/release/hx
