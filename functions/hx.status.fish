@@ -9,8 +9,10 @@ function hx.status
     end
 
 
-    set -l available_modules pid exe cwd cmdline ram subprocesses version terminal etime ts-grammars env threads uid state log
-    set -l modules $available_modules
+    # TODO: create module to list all files watched with a inotify handle
+    set -l available_modules pid exe cwd cmdline mem niceness subprocesses version terminal etime ts-grammars env threads uid state sockets # log
+    set -l default_modules $available_modules[..-2] # without `sockets`
+    set -l modules $default_modules
 
     # if set -q helix_fish_status_modules
     #     # TODO: handle this
@@ -129,7 +131,7 @@ function hx.status
             # - COLORTERM # https://github.com/helix-editor/helix/blob/af7a1fd20c0a2915e0dae1b5bea7cb6bde6c2746/helix-term/src/lib.rs#L31
             # Since `hx` is a rust program maybe also look for relavant rust env vars like `RUST_BACKTRACE`
             printf '%senv%s:\n' $b $reset
-            set -l relevant_env_vars HELIX_RUNTIME HELIX_LOG_LEVEL COLORTERM RUST_BACKTRACE
+            set -l relevant_env_vars HELIX_RUNTIME HELIX_LOG_LEVEL COLORTERM RUST_BACKTRACE RUST_LOG
             set -l len_longest_relevant_env_var 13 # HELIX_RUNTIME 
             string split0 </proc/$pid/environ | while read --delimiter = var value
                 if contains --index -- $var $relevant_env_vars | read index
@@ -145,6 +147,8 @@ function hx.status
                 set rpad (string repeat --count $rpad ' ')
                 printf ' - %s%s%s%s=\n' (set_color --dim) $var $reset $rpad
             end
+
+            echo # Add newline to make it easier to spot the start of the next module
         end
 
         # IDEA: it must be possible to list which fds the process has open or which files it has mmapped into its virtual memory
@@ -181,25 +185,115 @@ function hx.status
             echo
         end
 
+        if contains -- sockets $modules
+            printf '%ssockets%s:' $b $reset
+            # /proc/$pid/net/tcp
+
+            # set -l raw 0100007F:162E
+
+            # echo $raw | read -d : addr port
+            # cat /proc/12232/net/udp | string match --regex --groups-only '\s+\d+: ([A-F0-9]{8}:[A-F0-9]{4}) ([A-F0-9]{8}:[A-F0-9]{4}) ([A-Z0-9]{2})'
+            for protocol in tcp udp raw
+                echo "  $protocol"
 
 
-        # printf '%scpu%s:          todo\n' $b $reset
+                string match --regex --groups-only '\s+\d+: ([A-F0-9]{8}):([A-F0-9]{4}) ([A-F0-9]{8}):([A-F0-9]{4}) ([A-Z0-9]{2})' </proc/$pid/net/$protocol | while read --line client_addr client_port server_addr server_port sock_state
 
-        if contains -- ram $modules
-            # TODO: color depending on amount of ram is used
-            set -l vmrss (string match --regex --groups-only 'VmRSS:\s*(.+)' </proc/$pid/status)
-            printf '%sram%s:          %s%s%s\n' $b $reset $red $vmrss $reset
+                    # echo $client_addr
+                    # echo $client_port
+                    # echo $server_addr
+                    # echo $server_port
+                    # echo $sock_state
+                    # continue
+                    set client_port (printf '%d\n' 0x$client_port)
+                    set server_port (printf '%d\n' 0x$server_port)
+
+                    # TODO: change color depending on if addr is localhost or broadcast or a remote server
+                    set -l client_addr_d (printf '%d\n' 0x(string sub -s 1 -l 2 $client_addr))
+                    set -l client_addr_c (printf '%d\n' 0x(string sub -s 3 -l 2 $client_addr))
+                    set -l client_addr_b (printf '%d\n' 0x(string sub -s 5 -l 2 $client_addr))
+                    set -l client_addr_a (printf '%d\n' 0x(string sub -s 7 -l 2 $client_addr))
+
+                    set -l server_addr_d (printf '%d\n' 0x(string sub -s 1 -l 2 $server_addr))
+                    set -l server_addr_c (printf '%d\n' 0x(string sub -s 3 -l 2 $server_addr))
+                    set -l server_addr_b (printf '%d\n' 0x(string sub -s 5 -l 2 $server_addr))
+                    set -l server_addr_a (printf '%d\n' 0x(string sub -s 7 -l 2 $server_addr))
+
+                    # set -l a (printf '%d\n' 0x(string sub -s 1 -l 2 $addr))
+                    # set -l b (printf '%d\n' 0x(string sub -s 3 -l 2 $addr))
+                    # set -l c (printf '%d\n' 0x(string sub -s 5 -l 2 $addr))
+                    # set -l d (printf '%d\n' 0x(string sub -s 7 -l 2 $addr))
+
+                    set -l color_client_addr $dim
+                    # No IP addr part can be negative, so the only sum that can equal zero is 0.0.0.0
+                    if test (math "$client_addr_a + $client_addr_b + $client_addr_c + $client_addr_d") -eq 0
+                        set color_client_addr $yellow
+                    else if test $client_addr_a -eq 127 -a $client_addr_b -eq 0 -a $client_addr_c -eq 0 -a $client_addr_d -eq 1
+                    else
+                        # TODO: lookup the WLAN ip addr of computer
+                        # 192.168.0.178
+                    end
+
+                    # printf '%d.%d.%d.%d:%d\n' $d $c $b $a $port
+
+                    printf ' - %s%d.%d.%d.%d%s:%d <-> %d.%d.%d.%d:%d (%s)\n' \
+                        $color_client_addr $client_addr_a $client_addr_b $client_addr_c $client_addr_d $reset $client_port \
+                        $server_addr_a $server_addr_b $server_addr_c $server_addr_d $server_port \
+                        $sock_state
+                end
+            end
+
+
+            # set port (printf '%d\n' 0x$port)
+            # set -l a (printf '%d\n' 0x(string sub -s 1 -l 2 $addr))
+            # set -l b (printf '%d\n' 0x(string sub -s 3 -l 2 $addr))
+            # set -l c (printf '%d\n' 0x(string sub -s 5 -l 2 $addr))
+            # set -l d (printf '%d\n' 0x(string sub -s 7 -l 2 $addr))
+
+            # printf '%d.%d.%d.%d:%d\n' $d $c $b $a $port
+
+
+            # /proc/$pid/net/udp
         end
 
 
 
+        # printf '%scpu%s:          todo\n' $b $reset
+
+        if contains -- mem $modules
+            # TODO: color depending on amount of ram is used
+            set -l vmrss (string match --regex --groups-only 'VmRSS:\s*(.+)' </proc/$pid/status)
+            printf '%smem%s:          %s%s%s\n' $b $reset $red $vmrss $reset
+        end
+
+        if contains -- niceness $modules
+            set -l niceness (string split ' ' --fields=19 </proc/$pid/stat)
+            # On Linux niceness is an integer in [-20, -19, ..., 19]
+            #
+            set -l r 128
+            set -l g 128
+            set -l b 0
+            if test $niceness -lt 0
+                set r (math "$r + round(abs($niceness) / 20 * 127)")
+            else if test $niceness -gt 0
+                set g (math "$g + round($niceness / 20 * 127)")
+            end
+            set -l color (printf '#%02x%02x%02x' $r $g $b)
+
+            printf '%sniceness%s:    %s%s%s\n' $b $reset (set_color $color) $niceness $reset
+        end
 
         # TODO: find the .log file the editor writes to and print it
 
         if contains -- ts-grammars $modules
             # TODO: I do not know if the final filter is reliable, maybe check if $HELIX_RUNTIME is defined and use that
             set -l loaded_grammars (cat /proc/$pid/maps | string match --regex --groups-only '\s+(/\S+)' | uniq | string match '*grammars*')
-            printf '%sloaded ts grammars%s:\n' $b $reset
+            set -l n (count $loaded_grammars)
+
+            set -l color $dim
+            test $n -gt 0; and set color $cyan
+            printf '%sloaded ts grammars%s: %s%d%s\n' $b $reset $color $n $reset
+
             for f in $loaded_grammars
                 printf ' - %s%s%s/%s%s%s' $dim (path dirname $f) $reset $cyan (path basename $f) $reset
                 if test -L $f
@@ -207,6 +301,9 @@ function hx.status
                 end
                 echo
             end
+
+            # Add newline if we print some output
+            test $n -gt 0; and echo
             # printf ' - %s\n' $mmapped_files
         end
 
@@ -361,7 +458,6 @@ function hx.status
                 printf '%s%s%s %snewest release version%s\n' $green $hx_version $reset $dim $reset
             end
         end
-
 
 
         if test (count $hx_pids) -ge 2
